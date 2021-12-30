@@ -1,0 +1,138 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<title>Off-board Employee from Synapse Teams</title>
+	<link rel="icon" type="image/png"  href="https://www.synapse.org/favicon.png?v=3" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css">
+<style>
+    html,body,h1,h2,h3,h4,h5,h6 {font-family: "Roboto", sans-serif}
+    
+	body {
+		font-size: 22px;
+		line-height: 35px;
+		margin: 20px;
+	}
+</style>
+<script src="https://code.jquery.com/jquery-1.11.2.min.js"></script>
+<script type="text/javascript">
+
+	$(document).ready(function() {
+	    var messageDiv = document.getElementById('message-div');
+	    messageDiv.style.visibility = 'hidden';	
+	});
+
+	function execute() {
+		// get the value of userId text box
+		var userId = document.getElementById('userId').value
+		
+		// clear current content
+		var listRoot = document.getElementById("list-root");
+  		while (listRoot.firstChild) {
+  			listRoot.removeChild(listRoot.lastChild);
+  		}
+		// retrieve user profile
+		$.getJSON("https://repo-prod.prod.sagebase.org/repo/v1/userProfile/"+userId).done(function(up){
+			
+			var userName = up.userName;
+			var readableName = up.firstName+" "+up.lastName+" ("+userName+") ";
+			
+			var message = "Dear Synapse Team Manager:\n%0A"+readableName+
+				"is soon to leave Sage Bionetworks. Please review their team membership and remove them from team ##teamref## as necessary."+
+				"\n%0ASincerely,\n%0ASage IT";
+		    var messageInput = document.getElementById('message-input');
+		    messageInput.value = message;
+			
+			$.getJSON("https://repo-prod.prod.sagebase.org/repo/v1/user/"+userId+"/team?limit=1000").done(function(data) {
+				var ul = document.createElement("ul");
+				var listRoot = document.getElementById("list-root");
+				listRoot.appendChild(ul);
+				
+				data.results.forEach((team)=>{
+					var li = document.createElement("li");
+					li.id = team.id;
+					var a = document.createElement("a");
+					a.innerText = team.name;
+					var teamUrl = "https://www.synapse.org/#!Team:"+team.id;
+					a.setAttribute('href', teamUrl);
+					a.setAttribute('target', "_blank");
+					li.appendChild(a);
+					// for each team get the admin's:
+					var memberUrl = "https://repo-prod.prod.sagebase.org/repo/v1/teamMembers/"+team.id+"?memberType=ADMIN&limit=50";
+					
+					ul.appendChild(li);
+
+					$.getJSON(memberUrl).done(function(members){
+						var emaillist = "";
+						var teamId;
+						members.results.forEach((elem)=>{
+							teamId = elem.teamId;
+							var admin = elem.member;
+							if (admin.ownerId != userId) {
+								if (emaillist.length>0) {
+									emaillist = emaillist+",";
+								}
+								emaillist = emaillist+admin.firstName+" "+admin.lastName+" <"+admin.userName+"@synapse.org>";
+							}
+						});
+						var li = document.getElementById(teamId);
+						var space = document.createElement("label");
+						space.innerText = " ";
+						li.appendChild(space);
+						if (emaillist.length>0) {
+							var adminMeta = document.createElement("button");
+							adminMeta.innerText = "Generate message draft";
+							var subject = team.name+" removal of "+readableName;
+							var teamRef = team.name+", "+teamUrl;
+							adminMeta.onclick = function() { sendmail(adminMeta, emaillist, subject, teamRef)};
+							li.appendChild(adminMeta);
+						} else {
+							var warning = document.createElement("label");
+							warning.innerText = "Note: No team manager other than the user themself.";
+							li.appendChild(warning);
+						}
+					});
+				});
+
+			});
+			
+		    var messageDiv = document.getElementById('message-div');
+		    messageDiv.style.visibility = 'visible';			
+		});
+		
+		
+
+	}
+	
+	function sendmail(button, emaillist, subject, teamRef) {
+	    var messageInput = document.getElementById('message-input');
+	    var message = messageInput.value;
+		var url = "mailto:"+emaillist+"?subject="+subject+"&body="+message.replace('##teamref##', teamRef);
+		window.open(url, '_blank');
+		button.innerText = "Draft generated";
+	}
+
+
+</script>
+</head>
+<body>
+	<h1>Off-board Employee from Synapse Teams</h1>
+	<hr/>
+	
+	Instructions:  Visit the <a href="https://www.synapse.org/#!Team:273957" target="_blank">Sage Synapse Team</a>, find the departing employee, note their 6-7 digit user id and enter it below.
+	<form>
+	Synapse user id: <input id="userId" type="text" name="Synapse user id"/>  
+	<button type="button" onclick="execute()">Submit</button> 
+	</form>
+	
+	<div id="message-div">
+		<br/>Edit the message and then notify team managers by clicking "Send mail" next to selected teams.  Note that
+		"##teamref##" will be replaced with the name and link to the referenced team.
+		<br/>Message:<br/>
+		<textarea id="message-input" name="message" style="width:600px;max-width:600px;height:100px">  
+		</textarea>
+	</div>
+
+	<div id="list-root">
+	</div>
+</body>
+</html>
